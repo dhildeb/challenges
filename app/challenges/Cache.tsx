@@ -56,16 +56,18 @@ function UserProfile({ userId }) {
 
  */
 
+
 import { useEffect, useState } from "react";
 
 type Options = {
     ttl?: number;
+    cacheKey?: string;
     staleWhileRevalidate: boolean;
 };
 
 const cache = new Map();
 export const clearCache = () => cache.clear();
-
+const inflightRequests = new Map();
 
 export const useCachedAPI = (url: string, options?: Options) => {
   const [data, setData] = useState<string | null>(null);
@@ -74,30 +76,48 @@ export const useCachedAPI = (url: string, options?: Options) => {
   const [shouldRefresh, setShouldRefresh] = useState<boolean>(false)
 
   const invalidate = () => {
-    setShouldRefresh(true)
+    setShouldRefresh(true);
   }
 
   const getData = async () => {
+    const cacheKey = options?.cacheKey || url
     try{
-        const res = await (await fetch(url)).json()
+        if (!inflightRequests.has(cacheKey)) {
+            const fetchPromise = fetch(cacheKey).then(res => {
+                if(res.ok){
+                    return res.json()
+                } else {
+                    throw new Error(res.status+': '+res.statusText)
+                }
+            });
+            inflightRequests.set(cacheKey, fetchPromise);
+        }
+
+        const res = await inflightRequests.get(cacheKey);
         setData(res)
-        cache.set(url, res)
+        cache.set(cacheKey, res)
     } catch(e: any) {
         setError(new Error(e.message))
     } finally {
         setLoading(false)
+        inflightRequests.delete(cacheKey)
     }
 }
   
   useEffect(() => {
     setLoading(true)
-    const cacheData = cache.get(url)
-    const cachedTtl = +(cache.get(url+':ttl') || Date.now())
+    const cacheKey = options?.cacheKey || url
+    const cacheData = cache.get(cacheKey)
+    const cachedTtl = +(cache.get(cacheKey+':ttl') || Date.now())
     const ttl = Date.now() + (options?.ttl || 60 * 5 * 1000)
+    const isCacheAlive = cachedTtl <= Date.now()
 
-    if(!cacheData || cachedTtl <= Date.now() || shouldRefresh) {
+    if(!cacheData || isCacheAlive || shouldRefresh) {
+        if(cacheData && isCacheAlive && options?.staleWhileRevalidate) {
+            setData(cacheData);
+        }
         getData()
-        cache.set(url+':ttl', ttl)
+        cache.set(cacheKey+':ttl', ttl)
     } else {
         setData(cacheData)
         setLoading(false)

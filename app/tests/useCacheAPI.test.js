@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useCachedAPI, clearCache } from '../challenges/Cache';
 
 // Mock fetch
@@ -27,8 +27,6 @@ describe('useCachedAPI', () => {
     const { result } = renderHook(() => 
       useCachedAPI('https://api.example.com/user/1')
     );
-
-    console.log(result)
 
     expect(result.current.loading).toBe(true);
     expect(result.current.data).toBeNull();
@@ -173,7 +171,9 @@ describe('useCachedAPI', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
 
     // Call invalidate
-    result.current.invalidate();
+    await act(async () => {
+        result.current.invalidate();
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.data).toEqual(freshData);
