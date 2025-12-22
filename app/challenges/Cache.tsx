@@ -83,7 +83,7 @@ export const useCachedAPI = (url: string, options?: Options) => {
     const cacheKey = options?.cacheKey || url
     try{
         if (!inflightRequests.has(cacheKey)) {
-            const fetchPromise = fetch(cacheKey).then(res => {
+            const fetchPromise = fetch(url).then(res => {
                 if(res.ok){
                     return res.json()
                 } else {
@@ -110,10 +110,10 @@ export const useCachedAPI = (url: string, options?: Options) => {
     const cacheData = cache.get(cacheKey)
     const cachedTtl = +(cache.get(cacheKey+':ttl') || Date.now())
     const ttl = Date.now() + (options?.ttl || 60 * 5 * 1000)
-    const isCacheAlive = cachedTtl <= Date.now()
+    const isCacheExpired = cachedTtl <= Date.now()
 
-    if(!cacheData || isCacheAlive || shouldRefresh) {
-        if(cacheData && isCacheAlive && options?.staleWhileRevalidate) {
+    if(!cacheData || isCacheExpired || shouldRefresh) {
+        if(cacheData && isCacheExpired && options?.staleWhileRevalidate) {
             setData(cacheData);
         }
         getData()
