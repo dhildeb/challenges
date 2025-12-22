@@ -56,45 +56,57 @@ function UserProfile({ userId }) {
 
  */
 
+import { useEffect, useState } from "react";
+
 type Options = {
     ttl?: number;
     staleWhileRevalidate: boolean;
 };
 
-export const useCachedAPI = async (url: string, options: Options) => {
-    let data = localStorage.getItem(url)
-    let ttlTime = +(localStorage.getItem(url+':ttl') || Date.now())
-    const ttl = Date.now() + (options?.ttl || 60 * 60 * 5)
-    let loading = true
-    let error
+const cache = new Map();
+export const clearCache = () => cache.clear();
 
-    console.log(ttl)
 
-    const invalidate = async () => {
-        const res = await fetch(url)
-        return res.json()
+export const useCachedAPI = (url: string, options?: Options) => {
+  const [data, setData] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [shouldRefresh, setShouldRefresh] = useState<boolean>(false)
+
+  const invalidate = () => {
+    setShouldRefresh(true)
+  }
+
+  const getData = async () => {
+    try{
+        const res = await (await fetch(url)).json()
+        setData(res)
+        cache.set(url, res)
+    } catch(e: any) {
+        setError(new Error(e.message))
+    } finally {
+        setLoading(false)
     }
-
-    if(ttlTime <= ttl) {
-        data = null
-    }
-
-    if(!data){
-        try{
-            data = await invalidate()
-        } catch(e) {
-            error = e
-        } finally {
-            loading = false
-        }
-        localStorage.setItem(url, JSON.stringify(data))
-        localStorage.setItem(url+':ttl', JSON.stringify(ttl))
-    } else {
-        loading = false
-    }
-
-
-
-
-    return {data, loading, error, invalidate}
 }
+  
+  useEffect(() => {
+    setLoading(true)
+    const cacheData = cache.get(url)
+    const cachedTtl = +(cache.get(url+':ttl') || Date.now())
+    const ttl = Date.now() + (options?.ttl || 60 * 5 * 1000)
+
+    if(!cacheData || cachedTtl <= Date.now() || shouldRefresh) {
+        getData()
+        cache.set(url+':ttl', ttl)
+    } else {
+        setData(cacheData)
+        setLoading(false)
+    }
+
+    if(shouldRefresh){
+        setShouldRefresh(false)
+    }
+  }, [url, shouldRefresh]);
+  
+  return { data, loading, error, invalidate };
+};

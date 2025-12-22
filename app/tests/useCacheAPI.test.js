@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { useCachedAPI } from '../challenges/Cache';
+import { useCachedAPI, clearCache } from '../challenges/Cache';
 
 // Mock fetch
 global.fetch = jest.fn();
@@ -8,6 +8,7 @@ describe('useCachedAPI', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    clearCache();
   });
 
   afterEach(() => {
