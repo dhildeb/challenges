@@ -1,13 +1,13 @@
 'use client'
 
-import EventLoop from "./challenges/EventLoop";
+import EmojiDecoder from "./challenges/EmojiDecoder";
 
 export default function Home() {
 
   return (
     <div>
       Challenge Accepted!
-      <EventLoop />
+      <EmojiDecoder />
     </div>
   );
 }
