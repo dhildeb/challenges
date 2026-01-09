@@ -1,13 +1,13 @@
 'use client'
 
-import EmojiDecoder from "./challenges/EmojiDecoder";
+import { RateLimiter } from "./challenges/RateLimiter";
 
 export default function Home() {
 
   return (
     <div>
       Challenge Accepted!
-      <EmojiDecoder />
+      <RateLimiter />
     </div>
   );
 }
