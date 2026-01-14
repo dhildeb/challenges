@@ -78,15 +78,26 @@ type Task = {
     progress: number;
     createdAt: Timestamp;
 }
+type Log = {
+    id: string;
+    start: number;
+    end: number;
+}
 
 export const RateLimiter = () => {
 const [taskId, setTaskId] = useState<string>('')
 const [priority, setPriority] = useState<number>(0)
 const [duration, setDuration] = useState<number>(0)
-const [taskQueue, setTaskQueue] = useState<Task[]>([])
+const [taskQueue, setTaskQueue] = useState<Task[]>([
+    { "id": "A", "priority": 2, "createdAt": 0, "duration": 400, "progress": 0 },
+    { "id": "B", "priority": 1, "createdAt": 100, "duration": 300, "progress": 0 },
+    { "id": "C", "priority": 2, "createdAt": 200, "duration": 500, "progress": 0 }
+])
 const [taskInProgress, setTaskInProgress] = useState<Task>()
 const [timer, setTimer] = useState<NodeJS.Timeout | undefined>()
-
+const [log, setLog] = useState<Log[]>([])
+const [start, setStart] = useState<number>(Date.now())
+const [rateLimitMs, setRateLimitMs] = useState<number>(700)
 
 useEffect(() => {
     let duration = 0
@@ -99,20 +110,25 @@ useEffect(() => {
     const interval = setInterval(() => {
         if(!task) return
         if(duration >= task.duration){
-            setTaskInProgress(undefined)
-            task = undefined
-            clearInterval(interval)
-            clearInterval(timer)
-            setTimer(undefined)
-            duration = 0
+            setLog(prev => [...prev, {id: task.id, start: Date.now() - duration - rateLimitMs, end: Date.now() - rateLimitMs}])
+            setTimeout(() => {
+                setTaskInProgress(undefined)
+                task = undefined
+                clearInterval(interval)
+                clearInterval(timer)
+                setTimer(undefined)
+                duration = 0
+            }, 100)
             return
         }
-        task.progress += 1000
+        task.progress += rateLimitMs
         setTaskInProgress({...task})
-        duration += 1000
-    }, 1000)
+        duration += rateLimitMs
+    }, rateLimitMs)
     setTimer(interval)
 }, [taskQueue, taskInProgress])
+
+
 
 const setValidatedNumber = (val: string, setter: (int: number) => void) => {
     const int = parseInt(val)
@@ -140,9 +156,11 @@ return (
     <>
         <div>
             <span>Create Task</span>
+            <br/ >
+            <Input title="Rate Limit (ms)" value={rateLimitMs} setValue={(val) => setValidatedNumber(val, setRateLimitMs)} />
             <Input title="Task Name" value={taskId} setValue={setTaskId} />
             <Input title="Priority" value={priority} setValue={(val) => setValidatedNumber(val, setPriority)} />
-            <Input title="Duration (ms)" value={duration} setValue={(val) => setValidatedNumber(val, setDuration)} />
+            <Input title="Duration (ms)" value={duration} setValue={(val) => setValidatedNumber(val, setDuration)} max={10000} />
             <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={() => createTask()}>Queue Task</button>
         </div>
         <div className="mt-8">
@@ -171,7 +189,19 @@ return (
                     <span className="w-1/4">{formatDate(task.createdAt)}</span>
                 </div>
             )}
+            <div className="flex w-full mt-24">
+                <span className="w-1/3">Logs (Name)</span>
+                <span className="w-1/3">Start</span>
+                <span className="w-1/3">End</span>
+            </div>
         </div>
+        {log.map((log, index) => 
+            <div className="flex w-full" key={log.id+index}>
+                <span className="w-1/3">{log.id}</span>
+                <span className="w-1/3">{log.start - start}</span>
+                <span className="w-1/3">{log.end - start}</span>
+            </div>
+        )}
     </>
 )
 }
