@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Input } from "../components/Input"
 import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
 // Rate-Limited Task Scheduler
@@ -46,30 +46,19 @@ import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
 
 // Output
 
-// Return an array of execution records:
+// Return an array of execution records (approximate times):
 
 // [
 //   { "id": "A", "start": 0, "end": 400 },
-//   { "id": "C", "start": 400, "end": 900 },
-//   { "id": "B", "start": 1000, "end": 1300 }
+//   { "id": "C", "start": 400, "end": 1200 },
+//   { "id": "B", "start": 1200, "end": 1500 }
 // ]
 
-
-// (Notice how B is delayed due to rate limiting.)
-
-// Constraints
-
-// Tasks may arrive after scheduling has started
-// You may not split a task once it begins
-// Tasks must eventually execute
-// tasks.length can be up to 10,000
-
-// Optional Extensions
-
-// Support task cancellation
-// Allow multiple workers
-// Add task deadlines
-// Visualize the timeline
+// Note: Task C pauses mid-execution when the rolling window exceeds 700ms.
+// At time 700ms, the window contains A(400ms) + C(300ms) = 700ms.
+// The next 100ms would exceed the limit, so C pauses until A's work
+// expires from the rolling window at time 1000ms, then resumes.
+// This demonstrates true rolling rate limit enforcement during task execution.
 
 type Task = {
     id: string;
@@ -98,37 +87,60 @@ const [timer, setTimer] = useState<NodeJS.Timeout | undefined>()
 const [log, setLog] = useState<Log[]>([])
 const [start, setStart] = useState<number>(Date.now())
 const [rateLimitMs, setRateLimitMs] = useState<number>(700)
+const workHistory = useRef<{timestamp: number, work: number}[]>([])
+const startTime = useRef<number>(0)
 
 useEffect(() => {
     let duration = 0
     if(!!timer) return
-    let task: Task | undefined = taskQueue.shift()
+    let task = setNextTask()
     if(!task) return
-    setTaskQueue([...taskQueue])
-    setTaskInProgress(task)
 
     const interval = setInterval(() => {
         if(!task) return
+
+        workHistory.current = workHistory.current.filter(w => Date.now() - w.timestamp < 1000)
+        const currentWork = workHistory.current.reduce((acc, curr) => acc + curr.work, 0)
+        if(currentWork + 100 > rateLimitMs) return
+    
+        if(duration === 0) {
+            startTime.current = Date.now()
+        }
+    
+        task.progress += 100
+        setTaskInProgress({...task})
+        duration += 100
+        workHistory.current.push({timestamp: Date.now(), work: 100})
+        
         if(duration >= task.duration){
-            setLog(prev => [...prev, {id: task.id, start: Date.now() - duration - rateLimitMs, end: Date.now() - rateLimitMs}])
+            setLog(prev => [...prev, {id: task.id, start: startTime.current - start - 100, end: Date.now() - start}])
             setTimeout(() => {
-                setTaskInProgress(undefined)
-                task = undefined
-                clearInterval(interval)
-                clearInterval(timer)
-                setTimer(undefined)
+                task = setNextTask()
                 duration = 0
-            }, 100)
+                if(!task){
+                    setTaskInProgress(undefined)
+                    clearInterval(interval)
+                    clearInterval(timer)
+                    setTimer(undefined)
+                    duration = 0
+                }
+            }, 10)
             return
         }
-        task.progress += rateLimitMs
-        setTaskInProgress({...task})
-        duration += rateLimitMs
-    }, rateLimitMs)
+    }, 100)
     setTimer(interval)
 }, [taskQueue, taskInProgress])
 
-
+const setNextTask = () => {
+    let task: Task | undefined = taskQueue.sort((a,b) => {
+        if(b.priority !== a.priority) return b.priority - a.priority
+        return a.createdAt - b.createdAt 
+    }).shift()
+    if(!task) return
+    setTaskQueue([...taskQueue])
+    setTaskInProgress(task)
+    return task
+}
 
 const setValidatedNumber = (val: string, setter: (int: number) => void) => {
     const int = parseInt(val)
@@ -141,7 +153,7 @@ const createTask = () => {
     if(!duration || !taskId) {
         console.log('Name and Duration are required!')
     }
-    setTaskQueue(prev => [...prev, {id: taskId, priority, duration, progress: 0, createdAt: Date.now()}].sort((a,b) => a.priority - b.priority))
+    setTaskQueue(prev => [...prev, {id: taskId, priority, duration, progress: 0, createdAt: Date.now()}])
     setTaskId('')
     setPriority(0)
     setDuration(0)
@@ -198,8 +210,8 @@ return (
         {log.map((log, index) => 
             <div className="flex w-full" key={log.id+index}>
                 <span className="w-1/3">{log.id}</span>
-                <span className="w-1/3">{log.start - start}</span>
-                <span className="w-1/3">{log.end - start}</span>
+                <span className="w-1/3">{log.start}</span>
+                <span className="w-1/3">{log.end}</span>
             </div>
         )}
     </>
